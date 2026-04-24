@@ -244,6 +244,61 @@
             z-index: 45;
             display: none;
         }
+
+        /* ─── MOBILE CONTROLS ─── */
+        #joystick-zone {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            width: 140px;
+            height: 140px;
+            z-index: 60;
+            display: none;
+            touch-action: none;
+        }
+        #joystick-base {
+            position: absolute;
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            background: rgba(212, 195, 106, 0.1);
+            border: 2px solid rgba(212, 195, 106, 0.25);
+            left: 10px;
+            top: 10px;
+        }
+        #joystick-thumb {
+            position: absolute;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            background: rgba(212, 195, 106, 0.35);
+            border: 2px solid rgba(212, 195, 106, 0.5);
+            left: 48px;
+            top: 48px;
+            transition: none;
+        }
+        #joystick-thumb.sprinting {
+            background: rgba(255, 150, 50, 0.45);
+            border-color: rgba(255, 150, 50, 0.6);
+        }
+        #look-zone {
+            position: fixed;
+            top: 0;
+            right: 0;
+            width: 55%;
+            height: 100%;
+            z-index: 55;
+            display: none;
+            touch-action: none;
+        }
+
+        @media (max-width: 900px) {
+            #menu h1 { font-size: 2.2rem; }
+            #menu h2 { font-size: 1rem; }
+            #minimap { width: 100px; height: 100px; bottom: 10px; right: 10px; }
+            #stamina-container { bottom: 170px; width: 140px; }
+            #distance-indicator { top: 10px; right: 15px; font-size: 0.7rem; }
+        }
     </style>
 </head>
 
@@ -252,10 +307,10 @@
         <div id="menu">
             <h1>THE BACKROOMS</h1>
             <h2>Level 0 — You are not alone.</h2>
-            <p>WASD - Move</p>
-            <p>SHIFT - Sprint</p>
-            <p>Mouse - Look</p>
-            <p class="start-hint">[ Click to enter ]</p>
+            <p id="ctrl-wasd">WASD - Move</p>
+            <p id="ctrl-sprint">SHIFT - Sprint</p>
+            <p id="ctrl-mouse">Mouse - Look</p>
+            <p class="start-hint" id="start-hint">[ Click to enter ]</p>
         </div>
     </div>
 
@@ -263,15 +318,23 @@
         <div id="stamina-bar"></div>
     </div>
     <div id="distance-indicator">PROXIMITY: <span id="dist-val">---</span></div>
-    <div id="warning">HE IS CLOSE</div>
+    <div id="warning">BĂSE IS CLOSE</div>
     <div id="crosshair"></div>
     <div id="vignette"></div>
     <div id="screen-flash"></div>
     <div id="minimap"><canvas id="minimap-canvas" width="140" height="140"></canvas></div>
     <div id="gameover">
         <h1>CAUGHT</h1>
-        <p>Click to try again</p>
+        <p>Tap to try again</p>
     </div>
+
+    <!-- Mobile controls -->
+    <div id="joystick-zone">
+        <div id="joystick-base">
+            <div id="joystick-thumb"></div>
+        </div>
+    </div>
+    <div id="look-zone"></div>
 
     <script type="importmap">
     {
@@ -627,27 +690,60 @@
             return null;
         }
 
+        // ─── MOBILE DETECTION ───
+        const isMobile = /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+            || ('ontouchstart' in window && window.innerWidth < 1024);
+
+        if (isMobile) {
+            document.getElementById('ctrl-wasd').textContent = 'Joystick - Move';
+            document.getElementById('ctrl-sprint').textContent = 'Max joystick - Sprint';
+            document.getElementById('ctrl-mouse').textContent = 'Swipe right side - Look';
+            document.getElementById('start-hint').textContent = '[ Tap to enter ]';
+        }
+
         // ─── CONTROLS ───
         const controls = new PointerLockControls(camera, document.body);
         const blocker = document.getElementById('blocker');
         const gameover = document.getElementById('gameover');
+        let mobileActive = false; // tracks if mobile game is active (no pointer lock)
 
-        blocker.addEventListener('click', () => controls.lock());
-
-        controls.addEventListener('lock', () => {
-            blocker.style.display = 'none';
-            ['stamina-container', 'distance-indicator', 'minimap', 'crosshair', 'vignette', 'screen-flash']
-                .forEach(id => document.getElementById(id).style.display = 'block');
+        function showHUD() {
+            const els = ['stamina-container', 'distance-indicator', 'minimap', 'crosshair', 'vignette', 'screen-flash'];
+            els.forEach(id => document.getElementById(id).style.display = 'block');
+            if (isMobile) {
+                document.getElementById('joystick-zone').style.display = 'block';
+                document.getElementById('look-zone').style.display = 'block';
+            }
             if (!audioStarted) startAudio();
-        });
+        }
 
-        controls.addEventListener('unlock', () => {
-            if (!gameOverActive) blocker.style.display = 'flex';
-        });
+        if (isMobile) {
+            // Mobile: tap to start (no pointer lock needed)
+            blocker.addEventListener('click', () => {
+                blocker.style.display = 'none';
+                mobileActive = true;
+                showHUD();
+            });
+        } else {
+            // Desktop: pointer lock
+            blocker.addEventListener('click', () => controls.lock());
+            controls.addEventListener('lock', () => {
+                blocker.style.display = 'none';
+                showHUD();
+            });
+            controls.addEventListener('unlock', () => {
+                if (!gameOverActive) blocker.style.display = 'flex';
+            });
+        }
 
         const moveState = { forward: false, backward: false, left: false, right: false, sprint: false };
         let stamina = 100, headBobPhase = 0, gameOverActive = false, gameTime = 0;
 
+        // Joystick state (mobile)
+        const joystickState = { dx: 0, dz: 0, magnitude: 0 };
+        const SPRINT_THRESHOLD = 0.85; // joystick distance ratio to auto-sprint
+
+        // Desktop keyboard
         document.addEventListener('keydown', (e) => {
             switch (e.code) {
                 case 'KeyW': case 'ArrowUp': moveState.forward = true; break;
@@ -666,6 +762,117 @@
                 case 'ShiftLeft': case 'ShiftRight': moveState.sprint = false; break;
             }
         });
+
+        // ─── MOBILE JOYSTICK ───
+        if (isMobile) {
+            const joystickZone = document.getElementById('joystick-zone');
+            const joystickBase = document.getElementById('joystick-base');
+            const joystickThumb = document.getElementById('joystick-thumb');
+            const MAX_DIST = 38; // max pixel distance from center
+            let joystickTouchId = null;
+            const baseCenter = { x: 70, y: 70 }; // center of joystick-zone
+
+            joystickZone.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                const touch = e.changedTouches[0];
+                joystickTouchId = touch.identifier;
+                updateJoystick(touch);
+            }, { passive: false });
+
+            joystickZone.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+                for (const touch of e.changedTouches) {
+                    if (touch.identifier === joystickTouchId) {
+                        updateJoystick(touch);
+                    }
+                }
+            }, { passive: false });
+
+            joystickZone.addEventListener('touchend', (e) => {
+                for (const touch of e.changedTouches) {
+                    if (touch.identifier === joystickTouchId) {
+                        joystickTouchId = null;
+                        joystickState.dx = 0;
+                        joystickState.dz = 0;
+                        joystickState.magnitude = 0;
+                        joystickThumb.style.left = '48px';
+                        joystickThumb.style.top = '48px';
+                        joystickThumb.classList.remove('sprinting');
+                    }
+                }
+            });
+
+            function updateJoystick(touch) {
+                const rect = joystickZone.getBoundingClientRect();
+                const tx = touch.clientX - rect.left - baseCenter.x;
+                const ty = touch.clientY - rect.top - baseCenter.y;
+                const dist = Math.sqrt(tx * tx + ty * ty);
+                const clampedDist = Math.min(dist, MAX_DIST);
+                const angle = Math.atan2(ty, tx);
+
+                const nx = Math.cos(angle) * clampedDist;
+                const ny = Math.sin(angle) * clampedDist;
+
+                // Map to movement: right = +dx, down = -dz (forward is up)
+                joystickState.dx = nx / MAX_DIST;
+                joystickState.dz = -ny / MAX_DIST; // invert Y: up = forward
+                joystickState.magnitude = clampedDist / MAX_DIST;
+
+                // Position thumb
+                joystickThumb.style.left = (48 + nx) + 'px';
+                joystickThumb.style.top = (48 + ny) + 'px';
+
+                // Sprint visual feedback
+                if (joystickState.magnitude >= SPRINT_THRESHOLD) {
+                    joystickThumb.classList.add('sprinting');
+                } else {
+                    joystickThumb.classList.remove('sprinting');
+                }
+            }
+
+            // ─── MOBILE TOUCH LOOK ───
+            const lookZone = document.getElementById('look-zone');
+            let lookTouchId = null;
+            let lastLookX = 0, lastLookY = 0;
+            const LOOK_SENSITIVITY = 0.004;
+
+            // Camera euler for manual rotation on mobile
+            const euler = new THREE.Euler(0, 0, 0, 'YXZ');
+
+            lookZone.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                const touch = e.changedTouches[0];
+                lookTouchId = touch.identifier;
+                lastLookX = touch.clientX;
+                lastLookY = touch.clientY;
+            }, { passive: false });
+
+            lookZone.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+                for (const touch of e.changedTouches) {
+                    if (touch.identifier === lookTouchId) {
+                        const deltaX = touch.clientX - lastLookX;
+                        const deltaY = touch.clientY - lastLookY;
+                        lastLookX = touch.clientX;
+                        lastLookY = touch.clientY;
+
+                        euler.setFromQuaternion(camera.quaternion);
+                        euler.y -= deltaX * LOOK_SENSITIVITY;
+                        euler.x -= deltaY * LOOK_SENSITIVITY;
+                        euler.x = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, euler.x));
+                        camera.quaternion.setFromEuler(euler);
+                    }
+                }
+            }, { passive: false });
+
+            lookZone.addEventListener('touchend', (e) => {
+                for (const touch of e.changedTouches) {
+                    if (touch.identifier === lookTouchId) {
+                        lookTouchId = null;
+                    }
+                }
+            });
+        }
 
         // ─── COLLISION (spatial hash for fast lookup) ───
         const HASH_CELL = CELL;
@@ -873,8 +1080,9 @@
             flash.style.background = 'rgba(255,0,0,0.6)';
             setTimeout(() => flash.style.background = 'rgba(0,0,0,0)', 200);
             document.getElementById('gameover').classList.add('active');
-            ['stamina-container', 'distance-indicator', 'minimap', 'crosshair', 'warning']
+            ['stamina-container', 'distance-indicator', 'minimap', 'crosshair', 'warning', 'joystick-zone', 'look-zone']
                 .forEach(id => document.getElementById(id).style.display = 'none');
+            if (isMobile) mobileActive = false;
         }
 
         gameover.addEventListener('click', () => location.reload());
@@ -894,11 +1102,25 @@
             const dt = Math.min(clock.getDelta(), 0.1);
             gameTime += dt;
 
-            if (controls.isLocked) {
-                const isSprinting = moveState.sprint && stamina > 0;
-                const speed = isSprinting ? 9 : 5;
+            const isActive = isMobile ? mobileActive : controls.isLocked;
+            if (isActive) {
+                // Determine movement input (keyboard or joystick)
+                let dz, dx, isSprinting;
 
-                if (isSprinting && (moveState.forward || moveState.backward || moveState.left || moveState.right)) {
+                if (isMobile) {
+                    dx = joystickState.dx;
+                    dz = joystickState.dz;
+                    isSprinting = joystickState.magnitude >= SPRINT_THRESHOLD && stamina > 0;
+                } else {
+                    dz = Number(moveState.forward) - Number(moveState.backward);
+                    dx = Number(moveState.right) - Number(moveState.left);
+                    isSprinting = moveState.sprint && stamina > 0;
+                }
+
+                const speed = isSprinting ? 9 : 5;
+                const isMoving = Math.abs(dz) > 0.05 || Math.abs(dx) > 0.05;
+
+                if (isSprinting && isMoving) {
                     stamina = Math.max(0, stamina - 20 * dt);
                 } else {
                     stamina = Math.min(100, stamina + 12 * dt);
@@ -910,16 +1132,12 @@
                     'linear-gradient(90deg,#ff6633,#ff9933)' :
                     'linear-gradient(90deg,#d4c36a,#f0e68c)';
 
-                const dz = Number(moveState.forward) - Number(moveState.backward);
-                const dx = Number(moveState.right) - Number(moveState.left);
-                const isMoving = dz !== 0 || dx !== 0;
-
                 if (isMoving) {
                     camera.getWorldDirection(forward);
                     forward.y = 0; forward.normalize();
                     right.crossVectors(forward, camera.up).normalize();
 
-                    const len = Math.sqrt(dx * dx + dz * dz);
+                    const len = Math.sqrt(dx * dx + dz * dz) || 1;
                     moveVec.set(0, 0, 0);
                     moveVec.addScaledVector(forward, (dz / len) * speed * dt);
                     moveVec.addScaledVector(right, (dx / len) * speed * dt);
