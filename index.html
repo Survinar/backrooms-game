@@ -1068,10 +1068,10 @@
             currentLevel = level;
             
             // Re-setup fog/lighting
-            scene.fog.color.setHex(level === 2 ? 0x050505 : 0x1a1708);
-            scene.background.setHex(level === 2 ? 0x050505 : 0x1a1708);
-            ambientLight.intensity = level === 2 ? 0.05 : 0.25;
-            poolLights.forEach(pl => { pl.intensity = level === 2 ? 0.3 : 1.2; pl.distance = level === 2 ? 8 : 12; });
+            scene.fog.color.setHex(level === 2 ? 0x0c0c0c : 0x1a1708);
+            scene.background.setHex(level === 2 ? 0x0c0c0c : 0x1a1708);
+            ambientLight.intensity = level === 2 ? 0.12 : 0.25;
+            poolLights.forEach(pl => { pl.intensity = level === 2 ? 0.8 : 1.2; pl.distance = level === 2 ? 10 : 12; });
 
             // Swap textures
             const wpTex = level === 2 ? createCreepyWallpaperTexture() : createWallpaperTexture();
@@ -1520,7 +1520,7 @@
                     if (Math.random() < 0.004) {
                         pl.intensity = 0.3 + Math.random() * 0.4;
                     } else {
-                        pl.intensity = 1.2;
+                        pl.intensity = currentLevel === 2 ? 0.8 : 1.2;
                     }
                 }
 
