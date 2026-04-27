@@ -1209,18 +1209,38 @@
             }
 
             // Update entity
-            entity.material.map = new THREE.TextureLoader().load(level === 2 ? 'entity1.png' : 'basescu_entity.png');
-            entity.material.needsUpdate = true;
+            const loader = new THREE.TextureLoader();
+            const texPath = level === 2 ? 'entity1.png' : 'basescu_entity.png';
+            loader.load(texPath, (t) => {
+                entity.material.map = t;
+                entity.material.needsUpdate = true;
+            }, undefined, (err) => {
+                console.warn("Failed to load entity texture:", texPath, "falling back.");
+                loader.load('basescu_entity.png', (t) => {
+                    entity.material.map = t;
+                    entity.material.needsUpdate = true;
+                });
+            });
+
             let entitySpawnR, entitySpawnC;
             do {
                 entitySpawnR = Math.floor(Math.random() * gridRows);
                 entitySpawnC = Math.floor(Math.random() * gridCols);
-            } while (maze[entitySpawnR][entitySpawnC] !== 0 || (Math.abs(entitySpawnR - 1) + Math.abs(entitySpawnC - 1)) < 5);
+            } while (maze[entitySpawnR][entitySpawnC] !== 0 || (Math.abs(entitySpawnR - 1) + Math.abs(entitySpawnC - 1)) < 8);
             
             entityState.pos.set(entitySpawnC * CELL, 1.5, entitySpawnR * CELL);
+            entityState.isChasing = false;
+            entityState.pathUpdateTimer = 0;
+            entityState.wanderTarget = null;
+            entityPath = null;
+            entityPathIndex = 0;
             entityState.speed = level === 2 ? 3.5 : 2.8;
             entityState.chaseSpeed = level === 2 ? 6.0 : 4.5;
             entityState.awarenessRange = level === 2 ? 30 : 20;
+            
+            entity.position.copy(entityState.pos);
+            if (!scene.children.includes(entity)) scene.add(entity); // Ensure it's in the scene
+            entity.visible = true;
 
             camera.position.set(1 * CELL, 1.6, 1 * CELL);
             stamina = 100;
