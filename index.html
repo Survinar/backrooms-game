@@ -958,6 +958,10 @@
                 console.log("Debug mode: " + (debugMode ? "ON" : "OFF"));
                 return;
             }
+            if ((e.key === '-' || e.code === 'Minus') && debugMode && !gameOverActive && !gameWonActive) {
+                advanceToNextLevel();
+                return;
+            }
             switch (e.code) {
                 case 'KeyW': case 'ArrowUp': moveState.forward = true; break;
                 case 'KeyS': case 'ArrowDown': moveState.backward = true; break;
@@ -1248,6 +1252,22 @@
             // HUD Reset
             document.getElementById('dist-val').textContent = '---';
             document.getElementById('warning').style.display = 'none';
+        }
+
+        function advanceToNextLevel() {
+            if (currentLevel === 1) {
+                const tr = document.getElementById('level-transition');
+                tr.classList.add('active');
+                // Temporary teleport to avoid multi-trigger during the transition
+                camera.position.set(0, 1000, 0);
+                setTimeout(() => {
+                    loadLevel(2);
+                    tr.classList.remove('active');
+                }, 500);
+                return;
+            }
+
+            console.log('No higher level is available.');
         }
 
         const _pBox = new THREE.Box3(); // reuse to avoid GC
@@ -1572,14 +1592,7 @@
                 const distToExit = camera.position.distanceTo(exitPos);
                 if (distToExit < 2.5 && !gameWonActive) {
                     if (currentLevel === 1) {
-                        const tr = document.getElementById('level-transition');
-                        tr.classList.add('active');
-                        // Temporary teleport to avoid multi-trigger
-                        camera.position.set(0, 1000, 0); 
-                        setTimeout(() => {
-                            loadLevel(2);
-                            tr.classList.remove('active');
-                        }, 500);
+                        advanceToNextLevel();
                     } else {
                         triggerGameWon();
                     }
