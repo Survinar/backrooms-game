@@ -1091,6 +1091,20 @@
                 mmCtx.fillStyle = '#ff3333';
                 mmCtx.beginPath(); mmCtx.arc(ex, ey, 3, 0, Math.PI * 2); mmCtx.fill();
             }
+
+            // Portal (pinned to edge if out of bounds)
+            const pgEx = worldToGrid(exitPos.x, exitPos.z);
+            let pdx = pgEx.c - pg.c;
+            let pdz = pgEx.r - pg.r;
+            
+            // Square clamp to keep indicator on minimap
+            pdx = Math.max(-vr, Math.min(vr, pdx));
+            pdz = Math.max(-vr, Math.min(vr, pdz));
+
+            const px = (pdx + vr) * s + s / 2;
+            const py = (pdz + vr) * s + s / 2;
+            mmCtx.fillStyle = '#33ff33';
+            mmCtx.beginPath(); mmCtx.arc(px, py, 4, 0, Math.PI * 2); mmCtx.fill();
         }
 
         // ─── ENTITY AI ───
