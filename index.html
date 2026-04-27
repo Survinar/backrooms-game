@@ -252,6 +252,30 @@
             animation: fadeIn 1s 1.5s forwards;
         }
 
+        #level-transition {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+            flex-direction: column;
+        }
+
+        #level-transition.active {
+            display: flex;
+            animation: fadeToBlack 0.5s forwards;
+        }
+
+        #level-transition h1 {
+            font-size: 3rem;
+            color: #d4c36a;
+            text-shadow: 0 0 40px rgba(212, 195, 106, 0.8);
+            opacity: 0;
+            animation: fadeIn 0.5s 0.5s forwards;
+        }
+
         @keyframes fadeToWhite {
             to {
                 background: rgba(255, 255, 255, 0.95);
@@ -375,6 +399,9 @@
         <h1>ESCAPED</h1>
         <p>Tap to play again</p>
     </div>
+    <div id="level-transition">
+        <h1>LEVEL 1 ...</h1>
+    </div>
 
     <!-- Mobile controls -->
     <div id="joystick-zone">
@@ -437,7 +464,7 @@
             return grid;
         }
 
-        const maze = generateMaze(MAZE_W, MAZE_H);
+        let maze = generateMaze(MAZE_W, MAZE_H);
         const gridRows = maze.length;
         const gridCols = maze[0].length;
 
@@ -525,6 +552,73 @@
             return tex;
         }
 
+        function createCreepyWallpaperTexture() {
+            const c = document.createElement('canvas');
+            c.width = 128; c.height = 128;
+            const ctx = c.getContext('2d');
+            ctx.fillStyle = '#3a2d22';
+            ctx.fillRect(0, 0, 128, 128);
+            for (let i = 0; i < 40; i++) {
+                ctx.fillStyle = `rgba(${10 + Math.random() * 20},${10 + Math.random() * 10},${10 + Math.random() * 10},${Math.random() * 0.4})`;
+                ctx.fillRect(Math.random() * 128, Math.random() * 128, Math.random() * 30 + 5, Math.random() * 30 + 5);
+            }
+            ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+            for (let y = 0; y < 128; y += 16) {
+                ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(128, y); ctx.stroke();
+            }
+            const tex = new THREE.CanvasTexture(c);
+            tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+            tex.generateMipmaps = true;
+            tex.minFilter = THREE.LinearMipmapLinearFilter;
+            return tex;
+        }
+
+        function createCreepyFloorTexture() {
+            const c = document.createElement('canvas');
+            c.width = 128; c.height = 128;
+            const ctx = c.getContext('2d');
+            ctx.fillStyle = '#1c1c1c';
+            ctx.fillRect(0, 0, 128, 128);
+            for (let i = 0; i < 150; i++) {
+                ctx.fillStyle = `rgba(${30 + Math.random() * 30},${10 + Math.random() * 10},${10 + Math.random() * 10},${Math.random() * 0.5})`;
+                ctx.fillRect(Math.random() * 128, Math.random() * 128, 2, 2);
+            }
+            for (let i = 0; i < 6; i++) {
+                ctx.fillStyle = `rgba(10,5,5,${Math.random() * 0.6})`;
+                ctx.beginPath();
+                ctx.arc(Math.random() * 128, Math.random() * 128, Math.random() * 15 + 5, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            const tex = new THREE.CanvasTexture(c);
+            tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+            tex.repeat.set(10, 10);
+            tex.generateMipmaps = true;
+            tex.minFilter = THREE.LinearMipmapLinearFilter;
+            return tex;
+        }
+
+        function createCreepyCeilingTexture() {
+            const c = document.createElement('canvas');
+            c.width = 128; c.height = 128;
+            const ctx = c.getContext('2d');
+            ctx.fillStyle = '#2a2a2a';
+            ctx.fillRect(0, 0, 128, 128);
+            ctx.strokeStyle = 'rgba(10,10,10,0.8)';
+            ctx.lineWidth = 2;
+            for (let x = 0; x <= 128; x += 32) {
+                ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 128); ctx.stroke();
+            }
+            for (let y = 0; y <= 128; y += 32) {
+                ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(128, y); ctx.stroke();
+            }
+            const tex = new THREE.CanvasTexture(c);
+            tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+            tex.repeat.set(10, 10);
+            tex.generateMipmaps = true;
+            tex.minFilter = THREE.LinearMipmapLinearFilter;
+            return tex;
+        }
+
         // ─── BUILD WALLS WITH INSTANCED MESH (1 draw call!) ───
         // Count walls first
         let wallCount = 0;
@@ -541,10 +635,10 @@
             metalness: 0.0
         });
 
-        const wallMesh = new THREE.InstancedMesh(wallGeo, wallMat, wallCount);
+        let wallMesh = new THREE.InstancedMesh(wallGeo, wallMat, wallCount);
         wallMesh.frustumCulled = true;
 
-        const wallBoxes = []; // collision
+        let wallBoxes = []; // collision
         const dummy = new THREE.Object3D();
         let idx = 0;
 
@@ -586,7 +680,7 @@
 
         // ─── LIGHT FIXTURES (visual only — cheap meshes) ───
         // Pre-compute valid light positions in open cells
-        const lightPositions = [];
+        let lightPositions = [];
         for (let r = 2; r < gridRows - 1; r += 3) {
             for (let c = 2; c < gridCols - 1; c += 3) {
                 if (maze[r][c] === 0) {
@@ -598,7 +692,7 @@
         // Create fixture visuals with InstancedMesh (single draw call)
         const fixtureGeo = new THREE.BoxGeometry(0.12, 0.04, 1.0);
         const fixtureMat = new THREE.MeshBasicMaterial({ color: 0xfff8d0 }); // Basic = no lighting calc
-        const fixtureMesh = new THREE.InstancedMesh(fixtureGeo, fixtureMat, lightPositions.length);
+        let fixtureMesh = new THREE.InstancedMesh(fixtureGeo, fixtureMat, lightPositions.length);
 
         for (let i = 0; i < lightPositions.length; i++) {
             dummy.position.set(lightPositions[i].x, WALL_H - 0.03, lightPositions[i].z);
@@ -651,7 +745,7 @@
         // Visual indicator for exit
         const exitGeo = new THREE.BoxGeometry(CELL * 0.8, WALL_H * 0.9, CELL * 0.8);
         const exitMat = new THREE.MeshBasicMaterial({ color: 0x33ff33, wireframe: true, transparent: true, opacity: 0.5 });
-        const exitMesh = new THREE.Mesh(exitGeo, exitMat);
+        let exitMesh = new THREE.Mesh(exitGeo, exitMat);
         exitMesh.position.copy(exitPos);
         exitMesh.position.y = WALL_H / 2;
         scene.add(exitMesh);
@@ -662,7 +756,7 @@
 
         // ─── ENTITY ───
         const entityTexture = new THREE.TextureLoader().load('basescu_entity.png');
-        const entity = new THREE.Sprite(new THREE.SpriteMaterial({
+        let entity = new THREE.Sprite(new THREE.SpriteMaterial({
             map: entityTexture, transparent: true, fog: true
         }));
         entity.scale.set(2.2, 3.0, 1);
@@ -811,6 +905,7 @@
         const moveState = { forward: false, backward: false, left: false, right: false, sprint: false };
         let stamina = 100, headBobPhase = 0, gameOverActive = false, gameWonActive = false, gameTime = 0;
         let debugMode = false;
+        let currentLevel = 1;
 
         // Joystick state (mobile)
         const joystickState = { dx: 0, dz: 0, magnitude: 0 };
@@ -967,6 +1062,127 @@
                     wallHash.get(key).push(box);
                 }
             }
+        }
+
+        function loadLevel(level) {
+            currentLevel = level;
+            
+            // Re-setup fog/lighting
+            scene.fog.color.setHex(level === 2 ? 0x050505 : 0x1a1708);
+            scene.background.setHex(level === 2 ? 0x050505 : 0x1a1708);
+            ambientLight.intensity = level === 2 ? 0.05 : 0.25;
+            poolLights.forEach(pl => { pl.intensity = level === 2 ? 0.3 : 1.2; pl.distance = level === 2 ? 8 : 12; });
+
+            // Swap textures
+            const wpTex = level === 2 ? createCreepyWallpaperTexture() : createWallpaperTexture();
+            const flTex = level === 2 ? createCreepyFloorTexture() : createFloorTexture();
+            const clTex = level === 2 ? createCreepyCeilingTexture() : createCeilingTexture();
+            
+            // Clean up old meshes
+            scene.remove(wallMesh); wallMesh.geometry.dispose(); wallMesh.material.dispose();
+            scene.remove(fixtureMesh); fixtureMesh.geometry.dispose(); fixtureMesh.material.dispose();
+            
+            maze = generateMaze(MAZE_W, MAZE_H);
+            
+            // Rebuild walls and collisions
+            let newWallCount = 0;
+            for (let r = 0; r < gridRows; r++) {
+                for (let c = 0; c < gridCols; c++) {
+                    if (maze[r][c] === 1) newWallCount++;
+                }
+            }
+            wallMesh = new THREE.InstancedMesh(wallGeo, new THREE.MeshStandardMaterial({
+                map: wpTex, roughness: 0.9, metalness: 0
+            }), newWallCount);
+            wallMesh.frustumCulled = true;
+            
+            wallBoxes.length = 0;
+            wallHash.clear();
+            const dummy = new THREE.Object3D();
+            let idx = 0;
+            for (let r = 0; r < gridRows; r++) {
+                for (let c = 0; c < gridCols; c++) {
+                    if (maze[r][c] === 1) {
+                        dummy.position.set(c * CELL, WALL_H / 2, r * CELL);
+                        dummy.updateMatrix();
+                        wallMesh.setMatrixAt(idx, dummy.matrix);
+                        idx++;
+                        const box = new THREE.Box3(
+                            new THREE.Vector3(c * CELL - CELL / 2, 0, r * CELL - CELL / 2),
+                            new THREE.Vector3(c * CELL + CELL / 2, WALL_H, r * CELL + CELL / 2)
+                        );
+                        wallBoxes.push(box);
+                        const cx = Math.floor((box.min.x + box.max.x) / 2 / HASH_CELL);
+                        const cz = Math.floor((box.min.z + box.max.z) / 2 / HASH_CELL);
+                        for (let dx = -1; dx <= 1; dx++) {
+                            for (let dz = -1; dz <= 1; dz++) {
+                                const key = `${cx + dx},${cz + dz}`;
+                                if (!wallHash.has(key)) wallHash.set(key, []);
+                                wallHash.get(key).push(box);
+                            }
+                        }
+                    }
+                }
+            }
+            wallMesh.instanceMatrix.needsUpdate = true;
+            scene.add(wallMesh);
+            
+            floor.material.map = flTex; floor.material.needsUpdate = true;
+            ceiling.material.map = clTex; ceiling.material.needsUpdate = true;
+
+            // Rebuild light positions
+            lightPositions.length = 0;
+            for (let r = 2; r < gridRows - 1; r += 3) {
+                for (let c = 2; c < gridCols - 1; c += 3) {
+                    if (maze[r][c] === 0) lightPositions.push({ x: c * CELL, z: r * CELL });
+                }
+            }
+            fixtureMesh = new THREE.InstancedMesh(fixtureGeo, new THREE.MeshBasicMaterial({ color: 0xfff8d0 }), lightPositions.length);
+            for (let i = 0; i < lightPositions.length; i++) {
+                dummy.position.set(lightPositions[i].x, WALL_H - 0.03, lightPositions[i].z);
+                dummy.updateMatrix();
+                fixtureMesh.setMatrixAt(i, dummy.matrix);
+            }
+            fixtureMesh.instanceMatrix.needsUpdate = true;
+            scene.add(fixtureMesh);
+
+            // Re-place portal
+            let newExitR, newExitC;
+            do {
+                newExitR = Math.floor(Math.random() * gridRows);
+                newExitC = Math.floor(Math.random() * gridCols);
+            } while (maze[newExitR][newExitC] !== 0 || (Math.abs(newExitR - 1) + Math.abs(newExitC - 1)) < 18);
+            
+            exitPos.set(newExitC * CELL, 0, newExitR * CELL);
+            exitMesh.position.copy(exitPos);
+            exitMesh.position.y = WALL_H / 2;
+            exitLight.position.copy(exitMesh.position);
+            
+            if (level === 2) {
+                exitMesh.material.color.setHex(0xff0000);
+                exitLight.color.setHex(0xff0000);
+            }
+
+            // Update entity
+            entity.material.map = new THREE.TextureLoader().load(level === 2 ? 'entity1.png' : 'basescu_entity.png');
+            entity.material.needsUpdate = true;
+            let entitySpawnR, entitySpawnC;
+            do {
+                entitySpawnR = Math.floor(Math.random() * gridRows);
+                entitySpawnC = Math.floor(Math.random() * gridCols);
+            } while (maze[entitySpawnR][entitySpawnC] !== 0 || (Math.abs(entitySpawnR - 1) + Math.abs(entitySpawnC - 1)) < 5);
+            
+            entityState.pos.set(entitySpawnC * CELL, 1.5, entitySpawnR * CELL);
+            entityState.speed = level === 2 ? 3.5 : 2.8;
+            entityState.chaseSpeed = level === 2 ? 6.0 : 4.5;
+            entityState.awarenessRange = level === 2 ? 30 : 20;
+
+            camera.position.set(1 * CELL, 1.6, 1 * CELL);
+            stamina = 100;
+            
+            // HUD Reset
+            document.getElementById('dist-val').textContent = '---';
+            document.getElementById('warning').style.display = 'none';
         }
 
         const _pBox = new THREE.Box3(); // reuse to avoid GC
@@ -1275,7 +1491,18 @@
                 // Check Win Condition
                 const distToExit = camera.position.distanceTo(exitPos);
                 if (distToExit < 2.5 && !gameWonActive) {
-                    triggerGameWon();
+                    if (currentLevel === 1) {
+                        const tr = document.getElementById('level-transition');
+                        tr.classList.add('active');
+                        // Temporary teleport to avoid multi-trigger
+                        camera.position.set(0, 1000, 0); 
+                        setTimeout(() => {
+                            loadLevel(2);
+                            tr.classList.remove('active');
+                        }, 500);
+                    } else {
+                        triggerGameWon();
+                    }
                 }
 
                 // Entity
