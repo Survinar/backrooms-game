@@ -207,12 +207,42 @@
             animation: fadeIn 1s 1.5s forwards;
         }
 
-        #gameover p {
+        #gameover p, #gamewon p {
             color: #888;
             margin-top: 1rem;
             opacity: 0;
             animation: fadeIn 1s 2.5s forwards;
             cursor: pointer;
+        }
+
+        #gamewon {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+            flex-direction: column;
+        }
+
+        #gamewon.active {
+            display: flex;
+            animation: fadeToWhite 3s forwards;
+        }
+
+        #gamewon h1 {
+            font-size: 3rem;
+            color: #33ff33;
+            text-shadow: 0 0 40px rgba(51, 255, 51, 0.8);
+            opacity: 0;
+            animation: fadeIn 1s 1.5s forwards;
+        }
+
+        @keyframes fadeToWhite {
+            to {
+                background: rgba(255, 255, 255, 0.95);
+            }
         }
 
         @keyframes fadeToBlack {
@@ -326,6 +356,10 @@
     <div id="gameover">
         <h1>CAUGHT</h1>
         <p>Tap to try again</p>
+    </div>
+    <div id="gamewon">
+        <h1>ESCAPED</h1>
+        <p>Tap to play again</p>
     </div>
 
     <!-- Mobile controls -->
@@ -588,6 +622,30 @@
             }
         }
 
+        // ─── EXIT GOAL ───
+        let exitR, exitC;
+        do {
+            exitR = Math.floor(Math.random() * gridRows);
+            exitC = Math.floor(Math.random() * gridCols);
+        } while (
+            maze[exitR][exitC] !== 0 ||
+            (Math.abs(exitR - 1) + Math.abs(exitC - 1)) < 18 // Must be far from spawn
+        );
+
+        const exitPos = new THREE.Vector3(exitC * CELL, 0, exitR * CELL);
+        
+        // Visual indicator for exit
+        const exitGeo = new THREE.BoxGeometry(CELL * 0.8, WALL_H * 0.9, CELL * 0.8);
+        const exitMat = new THREE.MeshBasicMaterial({ color: 0x33ff33, wireframe: true, transparent: true, opacity: 0.5 });
+        const exitMesh = new THREE.Mesh(exitGeo, exitMat);
+        exitMesh.position.copy(exitPos);
+        exitMesh.position.y = WALL_H / 2;
+        scene.add(exitMesh);
+
+        const exitLight = new THREE.PointLight(0x33ff33, 2, CELL * 3);
+        exitLight.position.copy(exitMesh.position);
+        scene.add(exitLight);
+
         // ─── ENTITY ───
         const entityTexture = new THREE.TextureLoader().load('basescu_entity.png');
         const entity = new THREE.Sprite(new THREE.SpriteMaterial({
@@ -732,12 +790,12 @@
                 showHUD();
             });
             controls.addEventListener('unlock', () => {
-                if (!gameOverActive) blocker.style.display = 'flex';
+                if (!gameOverActive && !gameWonActive) blocker.style.display = 'flex';
             });
         }
 
         const moveState = { forward: false, backward: false, left: false, right: false, sprint: false };
-        let stamina = 100, headBobPhase = 0, gameOverActive = false, gameTime = 0;
+        let stamina = 100, headBobPhase = 0, gameOverActive = false, gameWonActive = false, gameTime = 0;
 
         // Joystick state (mobile)
         const joystickState = { dx: 0, dz: 0, magnitude: 0 };
@@ -1067,12 +1125,13 @@
             entityState.pos.y = 1.5 + Math.sin(entityState.bobPhase) * 0.08;
             entity.position.copy(entityState.pos);
 
-            if (dist < entityState.catchRange && !gameOverActive) triggerGameOver();
+            if (dist < entityState.catchRange && !gameOverActive && !gameWonActive) triggerGameOver();
             return dist;
         }
 
-        // ─── GAME OVER ───
+        // ─── GAME OVER / WON ───
         function triggerGameOver() {
+            if (gameWonActive) return;
             gameOverActive = true;
             controls.unlock();
             playJumpScare();
@@ -1087,6 +1146,31 @@
 
         gameover.addEventListener('click', () => location.reload());
 
+        function triggerGameWon() {
+            if (gameOverActive) return;
+            gameWonActive = true;
+            controls.unlock();
+            
+            // Success sound
+            if (audioCtx) {
+                const o = audioCtx.createOscillator();
+                o.type = 'sine'; o.frequency.value = 440;
+                o.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 1);
+                const g = audioCtx.createGain();
+                g.gain.setValueAtTime(0.5, audioCtx.currentTime);
+                g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 3);
+                o.connect(g); g.connect(audioCtx.destination);
+                o.start(); o.stop(audioCtx.currentTime + 3);
+            }
+
+            document.getElementById('gamewon').classList.add('active');
+            ['stamina-container', 'distance-indicator', 'minimap', 'crosshair', 'warning', 'joystick-zone', 'look-zone']
+                .forEach(id => document.getElementById(id).style.display = 'none');
+            if (isMobile) mobileActive = false;
+        }
+
+        document.getElementById('gamewon').addEventListener('click', () => location.reload());
+
         // ─── GAME LOOP ───
         const clock = new THREE.Clock();
         const forward = new THREE.Vector3();
@@ -1097,7 +1181,7 @@
 
         function animate() {
             requestAnimationFrame(animate);
-            if (gameOverActive) { renderer.render(scene, camera); return; }
+            if (gameOverActive || gameWonActive) { renderer.render(scene, camera); return; }
 
             const dt = Math.min(clock.getDelta(), 0.1);
             gameTime += dt;
@@ -1151,6 +1235,12 @@
                     camera.position.y = 1.6 + Math.sin(headBobPhase) * (isSprinting ? 0.07 : 0.03);
                 } else {
                     camera.position.y = 1.6;
+                }
+
+                // Check Win Condition
+                const distToExit = camera.position.distanceTo(exitPos);
+                if (distToExit < 2.5 && !gameWonActive) {
+                    triggerGameWon();
                 }
 
                 // Entity
