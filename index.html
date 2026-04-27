@@ -126,6 +126,19 @@
             transition: width 0.1s;
         }
 
+        #debug-indicator {
+            position: fixed;
+            top: 50px;
+            right: 25px;
+            color: #ff3333;
+            font-size: 1rem;
+            font-weight: bold;
+            z-index: 50;
+            display: none;
+            text-shadow: 0 0 10px rgba(255, 51, 51, 0.8);
+            animation: pulse 1s infinite;
+        }
+
         #distance-indicator {
             position: fixed;
             top: 20px;
@@ -348,6 +361,7 @@
         <div id="stamina-bar"></div>
     </div>
     <div id="distance-indicator">PROXIMITY: <span id="dist-val">---</span></div>
+    <div id="debug-indicator">DEBUG MODE ACTIVE</div>
     <div id="warning">BĂSE IS CLOSE</div>
     <div id="crosshair"></div>
     <div id="vignette"></div>
@@ -796,6 +810,7 @@
 
         const moveState = { forward: false, backward: false, left: false, right: false, sprint: false };
         let stamina = 100, headBobPhase = 0, gameOverActive = false, gameWonActive = false, gameTime = 0;
+        let debugMode = false;
 
         // Joystick state (mobile)
         const joystickState = { dx: 0, dz: 0, magnitude: 0 };
@@ -803,6 +818,12 @@
 
         // Desktop keyboard
         document.addEventListener('keydown', (e) => {
+            if (e.key === '+') {
+                debugMode = !debugMode;
+                document.getElementById('debug-indicator').style.display = debugMode ? 'block' : 'none';
+                console.log("Debug mode: " + (debugMode ? "ON" : "OFF"));
+                return;
+            }
             switch (e.code) {
                 case 'KeyW': case 'ArrowUp': moveState.forward = true; break;
                 case 'KeyS': case 'ArrowDown': moveState.backward = true; break;
@@ -1079,7 +1100,7 @@
             const playerPos = camera.position;
             const dist = entityState.pos.distanceTo(playerPos);
 
-            entityState.isChasing = dist < entityState.awarenessRange;
+            entityState.isChasing = debugMode ? false : dist < entityState.awarenessRange;
             const timeBonus = Math.min(gameTime * 0.04, 2.5);
             const currentSpeed = entityState.isChasing ?
                 entityState.chaseSpeed + timeBonus :
@@ -1125,7 +1146,7 @@
             entityState.pos.y = 1.5 + Math.sin(entityState.bobPhase) * 0.08;
             entity.position.copy(entityState.pos);
 
-            if (dist < entityState.catchRange && !gameOverActive && !gameWonActive) triggerGameOver();
+            if (!debugMode && dist < entityState.catchRange && !gameOverActive && !gameWonActive) triggerGameOver();
             return dist;
         }
 
@@ -1201,7 +1222,7 @@
                     isSprinting = moveState.sprint && stamina > 0;
                 }
 
-                const speed = isSprinting ? 9 : 5;
+                const speed = debugMode ? 35 : (isSprinting ? 9 : 5);
                 const isMoving = Math.abs(dz) > 0.05 || Math.abs(dx) > 0.05;
 
                 if (isSprinting && isMoving) {
