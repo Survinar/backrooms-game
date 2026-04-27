@@ -1696,7 +1696,11 @@
                     dv.textContent = '---'; dv.style.color = '#d4c36a';
                 }
 
-                document.getElementById('warning').style.display = dist < 6 ? 'block' : 'none';
+                const warningEl = document.getElementById('warning');
+                warningEl.textContent = currentLevel === 2
+                    ? 'MICHAEL JACKSON NU E MORT E PE PLAJA FACE SPORTTT'
+                    : 'BĂSE IS CLOSE';
+                warningEl.style.display = dist < 6 ? 'block' : 'none';
 
                 const vig = document.getElementById('vignette');
                 if (dist < entityState.awarenessRange) {
