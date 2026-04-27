@@ -1248,6 +1248,11 @@
 
             camera.position.set(1 * CELL, 1.6, 1 * CELL);
             stamina = 100;
+            entityVisibleToPlayer = false;
+            if (entitySightAudio) {
+                entitySightAudio.pause();
+                entitySightAudio.currentTime = 0;
+            }
             
             // HUD Reset
             document.getElementById('dist-val').textContent = '---';
@@ -1291,7 +1296,9 @@
         }
 
         // ─── AUDIO ───
-        let audioStarted = false, audioCtx, heartbeatGain;
+        let audioStarted = false, audioCtx, heartbeatGain, entitySightAudio;
+        let entityVisibleToPlayer = false;
+        let entitySightAudioWarningShown = false;
 
         function startAudio() {
             audioStarted = true;
@@ -1319,6 +1326,17 @@
             const bf = audioCtx.createBiquadFilter();
             bf.type = 'bandpass'; bf.frequency.value = 120; bf.Q.value = 30;
             buzz.connect(bf); bf.connect(bg); bg.connect(audioCtx.destination); buzz.start();
+
+            entitySightAudio = new Audio('entity1.mp3');
+            entitySightAudio.loop = true;
+            entitySightAudio.preload = 'auto';
+            entitySightAudio.volume = 0.85;
+            entitySightAudio.addEventListener('error', () => {
+                if (!entitySightAudioWarningShown) {
+                    entitySightAudioWarningShown = true;
+                    console.warn('Failed to load entity1.mp3. Add the file to enable sight audio.');
+                }
+            }, { once: true });
         }
 
         function playHeartbeat(rate) {
@@ -1349,6 +1367,47 @@
             g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1);
             o.connect(g); g.connect(audioCtx.destination);
             o.start(); o.stop(audioCtx.currentTime + 1);
+        }
+
+        const _entityScreenPos = new THREE.Vector3();
+        const _entitySightDirection = new THREE.Vector3();
+        const _entitySightRaycaster = new THREE.Raycaster();
+
+        function isEntityInSight() {
+            _entityScreenPos.copy(entity.position).project(camera);
+            if (_entityScreenPos.z <= 0 || _entityScreenPos.z >= 1) return false;
+            if (Math.abs(_entityScreenPos.x) > 1 || Math.abs(_entityScreenPos.y) > 1) return false;
+
+            _entitySightDirection.subVectors(entity.position, camera.position);
+            const distance = _entitySightDirection.length();
+            if (distance <= 0.001) return true;
+
+            _entitySightDirection.normalize();
+            _entitySightRaycaster.set(camera.position, _entitySightDirection);
+            _entitySightRaycaster.far = Math.max(distance - 0.35, 0.01);
+
+            return _entitySightRaycaster.intersectObject(wallMesh, false).length === 0;
+        }
+
+        function syncEntitySightAudio() {
+            const shouldPlay = audioStarted && !gameOverActive && !gameWonActive && isEntityInSight();
+            if (shouldPlay === entityVisibleToPlayer) return;
+
+            entityVisibleToPlayer = shouldPlay;
+            if (!entitySightAudio) return;
+
+            if (shouldPlay) {
+                entitySightAudio.currentTime = 0;
+                entitySightAudio.play().catch((err) => {
+                    if (!entitySightAudioWarningShown) {
+                        entitySightAudioWarningShown = true;
+                        console.warn('Unable to play entity1.mp3:', err);
+                    }
+                });
+            } else {
+                entitySightAudio.pause();
+                entitySightAudio.currentTime = 0;
+            }
         }
 
         // ─── MINIMAP ───
@@ -1469,6 +1528,11 @@
         function triggerGameOver() {
             if (gameWonActive) return;
             gameOverActive = true;
+            entityVisibleToPlayer = false;
+            if (entitySightAudio) {
+                entitySightAudio.pause();
+                entitySightAudio.currentTime = 0;
+            }
             controls.unlock();
             playJumpScare();
             const flash = document.getElementById('screen-flash');
@@ -1485,6 +1549,11 @@
         function triggerGameWon() {
             if (gameOverActive) return;
             gameWonActive = true;
+            entityVisibleToPlayer = false;
+            if (entitySightAudio) {
+                entitySightAudio.pause();
+                entitySightAudio.currentTime = 0;
+            }
             controls.unlock();
             
             // Success sound
@@ -1600,6 +1669,7 @@
 
                 // Entity
                 const dist = updateEntity(dt);
+                syncEntitySightAudio();
 
                 // Update pooled lights (throttled — every 0.3s)
                 lightUpdateTimer -= dt;
