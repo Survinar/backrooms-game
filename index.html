@@ -103,19 +103,37 @@
                 opacity: 1;
             }
         }
-
         #stamina-container {
             position: fixed;
-            bottom: 30px;
+            bottom: 40px;
             left: 50%;
             transform: translateX(-50%);
             width: 200px;
-            height: 6px;
-            background: rgba(0, 0, 0, 0.6);
-            border: 1px solid rgba(212, 195, 106, 0.3);
-            border-radius: 3px;
+            height: 10px;
+            background: rgba(0, 0, 0, 0.5);
+            border: 2px solid #555;
+            border-radius: 5px;
             z-index: 50;
-            display: none;
+        }
+
+        #battery-container {
+            position: fixed;
+            bottom: 25px; /* Just below stamina */
+            left: 50%;
+            transform: translateX(-50%);
+            width: 200px;
+            height: 10px;
+            background: rgba(0, 0, 0, 0.5);
+            border: 2px solid #555;
+            border-radius: 5px;
+            z-index: 50;
+        }
+
+        #battery-bar {
+            width: 100%;
+            height: 100%;
+            background: #d4c36a;
+            transition: width 0.1s linear, background-color 0.2s;
         }
 
         #stamina-bar {
@@ -384,6 +402,9 @@
     <div id="stamina-container">
         <div id="stamina-bar"></div>
     </div>
+    <div id="battery-container">
+        <div id="battery-bar"></div>
+    </div>
     <div id="distance-indicator">PROXIMITY: <span id="dist-val">---</span></div>
     <div id="debug-indicator">DEBUG MODE ACTIVE</div>
     <div id="warning">BĂSE IS CLOSE</div>
@@ -475,6 +496,24 @@
 
         const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 45);
         camera.position.set(1 * CELL, 1.6, 1 * CELL); // grid[1][1] is always open
+
+        // Flashlight Logic
+        let flashlightOn = false;
+        let batteryLife = 100;
+        const flashlightLight = new THREE.SpotLight(0xfffae6, 0, 30, Math.PI / 5, 0.6, 1);
+        flashlightLight.position.set(0.3, -0.3, -0.2); 
+        flashlightLight.target.position.set(0.3, -0.3, -2);
+        
+        const flashlightGeo = new THREE.CylinderGeometry(0.04, 0.04, 0.25, 16);
+        flashlightGeo.rotateX(Math.PI / 2);
+        const flashlightMat = new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.8, roughness: 0.2 });
+        const flashlightMesh = new THREE.Mesh(flashlightGeo, flashlightMat);
+        flashlightMesh.position.set(0.3, -0.3, -0.4);
+        
+        camera.add(flashlightLight);
+        camera.add(flashlightLight.target);
+        camera.add(flashlightMesh);
+        scene.add(camera);
 
         const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'default' });
         renderer.setSize(window.innerWidth, window.innerHeight);
@@ -874,7 +913,7 @@
         let mobileActive = false; // tracks if mobile game is active (no pointer lock)
 
         function showHUD() {
-            const els = ['stamina-container', 'distance-indicator', 'minimap', 'crosshair', 'vignette', 'screen-flash'];
+            const els = ['stamina-container', 'battery-container', 'distance-indicator', 'minimap', 'crosshair', 'vignette', 'screen-flash'];
             els.forEach(id => document.getElementById(id).style.display = 'block');
             if (isMobile) {
                 document.getElementById('joystick-zone').style.display = 'block';
@@ -925,6 +964,12 @@
                 case 'KeyA': case 'ArrowLeft': moveState.left = true; break;
                 case 'KeyD': case 'ArrowRight': moveState.right = true; break;
                 case 'ShiftLeft': case 'ShiftRight': moveState.sprint = true; break;
+                case 'KeyF':
+                    if (batteryLife > 0) {
+                        flashlightOn = !flashlightOn;
+                        flashlightLight.intensity = flashlightOn ? 1.8 : 0;
+                    }
+                    break;
             }
         });
         document.addEventListener('keyup', (e) => {
@@ -1466,6 +1511,21 @@
                 bar.style.background = stamina < 30 ?
                     'linear-gradient(90deg,#ff6633,#ff9933)' :
                     'linear-gradient(90deg,#d4c36a,#f0e68c)';
+
+                // Flashlight battery logic
+                if (flashlightOn) {
+                    batteryLife = Math.max(0, batteryLife - 4 * dt); // ~25 seconds of use
+                    if (batteryLife <= 0) {
+                        flashlightOn = false;
+                        flashlightLight.intensity = 0;
+                    }
+                } else {
+                    batteryLife = Math.min(100, batteryLife + 2 * dt); // recharge slowly
+                }
+
+                const bBar = document.getElementById('battery-bar');
+                bBar.style.width = batteryLife + '%';
+                bBar.style.backgroundColor = batteryLife < 20 ? '#ff3333' : '#d4c36a';
 
                 if (isMoving) {
                     camera.getWorldDirection(forward);
