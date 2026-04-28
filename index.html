@@ -1390,7 +1390,11 @@
         }
 
         function syncEntitySightAudio() {
-            const shouldPlay = audioStarted && !gameOverActive && !gameWonActive && isEntityInSight();
+            const shouldPlay = audioStarted &&
+                currentLevel === 2 &&
+                !gameOverActive &&
+                !gameWonActive &&
+                isEntityInSight();
             if (shouldPlay === entityVisibleToPlayer) return;
 
             entityVisibleToPlayer = shouldPlay;
@@ -1612,7 +1616,7 @@
                 if (isSprinting && isMoving) {
                     stamina = Math.max(0, stamina - 20 * dt);
                 } else {
-                    stamina = Math.min(100, stamina + 12 * dt);
+                    stamina = Math.min(100, stamina + 18 * dt);
                 }
 
                 const bar = document.getElementById('stamina-bar');
